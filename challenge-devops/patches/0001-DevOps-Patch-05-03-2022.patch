@@ -1,0 +1,211 @@
+From d55bdc09b6e5ccb21ade7cc8b4ac099291142d02 Mon Sep 17 00:00:00 2001
+From: ricorhy <mico.angelo.b.rico@accenture.com>
+Date: Tue, 3 May 2022 12:25:29 +0800
+Subject: [PATCH] DevOps Patch 05/03/2022
+
+---
+ challenge-devops/Dockerfile             | 10 +++++++-
+ challenge-devops/Gemfile                |  3 ++-
+ challenge-devops/app-launch.sh          |  9 +++++++
+ challenge-devops/config/database.yml    |  8 +++---
+ challenge-devops/postgres-config.yaml   | 10 ++++++++
+ challenge-devops/postgres-pv.yaml       | 24 ++++++++++++++++++
+ challenge-devops/postgres-services.yaml | 12 +++++++++
+ challenge-devops/start-app.yaml         | 33 +++++++++++++++++++++++++
+ 8 files changed, 103 insertions(+), 6 deletions(-)
+ create mode 100644 challenge-devops/app-launch.sh
+ create mode 100644 challenge-devops/postgres-config.yaml
+ create mode 100644 challenge-devops/postgres-pv.yaml
+ create mode 100644 challenge-devops/postgres-services.yaml
+ create mode 100644 challenge-devops/start-app.yaml
+
+diff --git a/challenge-devops/Dockerfile b/challenge-devops/Dockerfile
+index 0d55cc0..c8b7797 100644
+--- a/challenge-devops/Dockerfile
++++ b/challenge-devops/Dockerfile
+@@ -5,6 +5,14 @@ RUN apt-get update -qq && apt-get install -y build-essential libpq-dev nodejs li
+ RUN mkdir /app
+ WORKDIR /app
+ COPY Gemfile Gemfile.lock /app/
++
++#Generate Bundle files
+ RUN bundle install 
++
+ COPY . /app
+-CMD bundle exec rails s -p 3000 -b '0.0.0.0'
++#CMD bundle exec rails s -p 3000 -b '0.0.0.0'
++
++FROM alpine:latest
++
++CMD [ "./app-launch.sh" ]
++
+diff --git a/challenge-devops/Gemfile b/challenge-devops/Gemfile
+index 371f020..131556f 100644
+--- a/challenge-devops/Gemfile
++++ b/challenge-devops/Gemfile
+@@ -3,7 +3,8 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
+ ruby '2.6.3'
+ gem 'rails'
+ gem 'activerecord', '>= 6.0.3.5'
+-gem 'sqlite3'
++#gem 'sqlite3' #removed to convert to postgresql
++gem 'pg' #postgresql #run bundle-install
+ gem 'puma'
+ gem 'sass-rails'
+ gem 'uglifier'
+diff --git a/challenge-devops/app-launch.sh b/challenge-devops/app-launch.sh
+new file mode 100644
+index 0000000..3df45a2
+--- /dev/null
++++ b/challenge-devops/app-launch.sh
+@@ -0,0 +1,9 @@
++#!/bin/bash
++
++kubectl apply -f postgres-pv.yaml #launch postgres persistent volume to cluster and apply persistent volume claim
++
++kubectl apply -f postgres-config.yaml #launch postgres config changes to cluster
++
++kubectl apply -f postgres-service.yaml #launch postgres service to cluster
++
++bundle exec rails s -p 3000 -b '0.0.0.0' #launch ruby app
+\ No newline at end of file
+diff --git a/challenge-devops/config/database.yml b/challenge-devops/config/database.yml
+index 0d02f24..3130662 100644
+--- a/challenge-devops/config/database.yml
++++ b/challenge-devops/config/database.yml
+@@ -5,21 +5,21 @@
+ #   gem 'sqlite3'
+ #
+ default: &default
+-  adapter: sqlite3
++  adapter: postgresql
+   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+   timeout: 5000
+ 
+ development:
+   <<: *default
+-  database: db/development.sqlite3
++  database: devops-challenge_development
+ 
+ # Warning: The database defined as "test" will be erased and
+ # re-generated from your development database when you run "rake".
+ # Do not set this db to the same as development or production.
+ test:
+   <<: *default
+-  database: db/test.sqlite3
++  database: devops-challenge_test
+ 
+ production:
+   <<: *default
+-  database: db/production.sqlite3
++  database: devops-challenge_production
+diff --git a/challenge-devops/postgres-config.yaml b/challenge-devops/postgres-config.yaml
+new file mode 100644
+index 0000000..c86aa94
+--- /dev/null
++++ b/challenge-devops/postgres-config.yaml
+@@ -0,0 +1,10 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++ name: postgres-config
++ labels:
++   app: postgres
++data:
++ POSTGRES_DB: postgresdb
++ POSTGRES_USER: admin
++ POSTGRES_PASSWORD: rubypgq
+\ No newline at end of file
+diff --git a/challenge-devops/postgres-pv.yaml b/challenge-devops/postgres-pv.yaml
+new file mode 100644
+index 0000000..69bc26c
+--- /dev/null
++++ b/challenge-devops/postgres-pv.yaml
+@@ -0,0 +1,24 @@
++kind: PersistentVolume
++metadata:
++  name: postgresql-pv
++  labels:
++    type: local
++spec:
++  storageClassName: manual
++  capacity:
++    storage: 10Gi
++  accessModes:
++    - ReadWriteOnce
++  hostPath:
++    path: "/mnt/data"
++---
++kind: PersistentVolumeClaim
++metadata:
++  name: postgresql-pv-claim
++spec:
++  storageClassName: manual
++  accessModes:
++    - ReadWriteOnce
++  resources:
++    requests:
++      storage: 10Gi 
+\ No newline at end of file
+diff --git a/challenge-devops/postgres-services.yaml b/challenge-devops/postgres-services.yaml
+new file mode 100644
+index 0000000..62df928
+--- /dev/null
++++ b/challenge-devops/postgres-services.yaml
+@@ -0,0 +1,12 @@
++apiVersion: v1
++kind: Service
++metadata:
++ name: ruby-postgres
++ labels:
++   app: postgres
++spec:
++ type: NodePort
++ ports:
++  - port: 5432
++ selector:
++  app: postgres
+\ No newline at end of file
+diff --git a/challenge-devops/start-app.yaml b/challenge-devops/start-app.yaml
+new file mode 100644
+index 0000000..bed681c
+--- /dev/null
++++ b/challenge-devops/start-app.yaml
+@@ -0,0 +1,33 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: devops-challenge
++spec:
++  replicas: 3
++  selector:
++    matchLabels:
++      app: challenge
++template:
++  metadata:
++    labels:
++      app: challenge
++  spec:
++    containers:
++      - name: appserver
++        ports:
++        - containerPort:3000
++      - name: postgres
++        image: postgres:10.1
++        imagePullPolicy: "IfNotPresent"
++        ports:
++          - containerPort: 5432
++        envFrom:
++          - configMapRef:
++              name: postgres-config
++        volumeMounts:
++          - mountPath: /var/lib/postgresql/data
++            name: postgredb
++    volumes:
++      - name: postgredb
++        persistentVolumeClaim:
++          claimName: postgres-pv-claim
+\ No newline at end of file
+-- 
+2.29.2.windows.1
+

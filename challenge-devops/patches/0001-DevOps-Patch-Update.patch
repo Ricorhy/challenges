@@ -1,0 +1,29 @@
+From 0c6aa82383b80bc483bf98105a666450f40e02b8 Mon Sep 17 00:00:00 2001
+From: Ricorhy <mico.angelo.b.rico@accenture.com>
+Date: Tue, 3 May 2022 12:55:40 +0800
+Subject: [PATCH] DevOps Patch Update
+
+---
+ challenge-devops/app-launch.sh | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/challenge-devops/app-launch.sh b/challenge-devops/app-launch.sh
+index 3df45a2..66a30ce 100644
+--- a/challenge-devops/app-launch.sh
++++ b/challenge-devops/app-launch.sh
+@@ -1,8 +1,10 @@
+ #!/bin/bash
+ 
+-kubectl apply -f postgres-pv.yaml #launch postgres persistent volume to cluster and apply persistent volume claim
++kubectl apply -f postgres-pv.yaml #create postgres persistent volume and apply persistent volume claim
+ 
+-kubectl apply -f postgres-config.yaml #launch postgres config changes to cluster
++kubectl apply -f postgres-config.yaml #launch postgres config changes 
++
++kubectl apply -f start-app.yaml #deploy k8 containers
+ 
+ kubectl apply -f postgres-service.yaml #launch postgres service to cluster
+ 
+-- 
+2.29.2.windows.1
+
